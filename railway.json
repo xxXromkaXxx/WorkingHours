@@ -1,0 +1,12 @@
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "NIXPACKS",
+    "buildCommand": "mvn -DskipTests package"
+  },
+  "deploy": {
+    "startCommand": "java -jar target/Work_Days-1.0-SNAPSHOT-jar-with-dependencies.jar",
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 10
+  }
+}

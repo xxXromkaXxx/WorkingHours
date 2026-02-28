@@ -13,10 +13,9 @@ public class Main {
             Logig bot = new Logig();
             bot.loadRemindersFromDatabase();
             TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
-            botsApi.registerBot(new Logig());
+            botsApi.registerBot(bot);
         } catch (TelegramApiException e) {
             e.printStackTrace();
         }
     }
 }
-

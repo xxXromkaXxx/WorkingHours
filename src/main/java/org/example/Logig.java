@@ -902,20 +902,20 @@ public class Logig extends TelegramLongPollingBot {
         String selectSql = """
         SELECT work_data FROM work_hours 
         WHERE chatid = ? 
-        AND work_id = (SELECT work_id FROM work_types WHERE work_name = ?) 
+        AND work_id = (SELECT work_id FROM work_types WHERE chatid = ? AND work_name = ?) 
         AND month = ?
     """;
 
         String insertSql = """
         INSERT INTO work_hours (chatid, work_id, month, work_data)
-        VALUES (?, (SELECT work_id FROM work_types WHERE work_name = ?), ?, ?::jsonb)
+        VALUES (?, (SELECT work_id FROM work_types WHERE chatid = ? AND work_name = ?), ?, ?::jsonb)
     """;
 
         String updateSql = """
         UPDATE work_hours 
         SET work_data = work_data || ?::jsonb
         WHERE chatid = ? 
-        AND work_id = (SELECT work_id FROM work_types WHERE work_name = ?) 
+        AND work_id = (SELECT work_id FROM work_types WHERE chatid = ? AND work_name = ?) 
         AND month = ?
     """;
 
@@ -930,27 +930,30 @@ public class Logig extends TelegramLongPollingBot {
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement selectStmt = conn.prepareStatement(selectSql);
              PreparedStatement insertStmt = conn.prepareStatement(insertSql);
-             PreparedStatement updateStmt = conn.prepareStatement(updateSql)) {
+            PreparedStatement updateStmt = conn.prepareStatement(updateSql)) {
 
             // Перевіряємо, чи існує запис для цього chatId, work_id, та місяця
             selectStmt.setLong(1, chatId);
-            selectStmt.setString(2, workName);
-            selectStmt.setInt(3, currentMonth);
+            selectStmt.setLong(2, chatId);
+            selectStmt.setString(3, workName);
+            selectStmt.setInt(4, currentMonth);
 
             try (ResultSet rs = selectStmt.executeQuery()) {
                 if (rs.next()) {
                     // Якщо запис існує, оновлюємо його, додаючи новий день у JSON
                     updateStmt.setString(1, dayDataJson);
                     updateStmt.setLong(2, chatId);
-                    updateStmt.setString(3, workName);
-                    updateStmt.setInt(4, currentMonth);
+                    updateStmt.setLong(3, chatId);
+                    updateStmt.setString(4, workName);
+                    updateStmt.setInt(5, currentMonth);
                     updateStmt.executeUpdate();
                 } else {
                     // Якщо запису немає, створюємо новий запис з поточним місяцем і днями
                     insertStmt.setLong(1, chatId);
-                    insertStmt.setString(2, workName);
-                    insertStmt.setInt(3, currentMonth);
-                    insertStmt.setString(4, dayDataJson);
+                    insertStmt.setLong(2, chatId);
+                    insertStmt.setString(3, workName);
+                    insertStmt.setInt(4, currentMonth);
+                    insertStmt.setString(5, dayDataJson);
                     insertStmt.executeUpdate();
                 }
             }
@@ -969,20 +972,20 @@ public class Logig extends TelegramLongPollingBot {
         String selectSql = """
         SELECT work_data FROM work_hours 
         WHERE chatid = ? 
-        AND work_id = (SELECT work_id FROM work_types WHERE work_name = ?) 
+        AND work_id = (SELECT work_id FROM work_types WHERE chatid = ? AND work_name = ?) 
         AND month = ?
     """;
 
         String insertSql = """
         INSERT INTO work_hours (chatid, work_id, month, work_data)
-        VALUES (?, (SELECT work_id FROM work_types WHERE work_name = ?), ?, ?::jsonb)
+        VALUES (?, (SELECT work_id FROM work_types WHERE chatid = ? AND work_name = ?), ?, ?::jsonb)
     """;
 
         String updateSql = """
         UPDATE work_hours 
         SET work_data = work_data || ?::jsonb
         WHERE chatid = ? 
-        AND work_id = (SELECT work_id FROM work_types WHERE work_name = ?) 
+        AND work_id = (SELECT work_id FROM work_types WHERE chatid = ? AND work_name = ?) 
         AND month = ?
     """;
 
@@ -995,12 +998,13 @@ public class Logig extends TelegramLongPollingBot {
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement selectStmt = conn.prepareStatement(selectSql);
              PreparedStatement insertStmt = conn.prepareStatement(insertSql);
-             PreparedStatement updateStmt = conn.prepareStatement(updateSql)) {
+            PreparedStatement updateStmt = conn.prepareStatement(updateSql)) {
 
             // Перевіряємо, чи існує запис для цього chatId, work_id, та місяця
             selectStmt.setLong(1, chatId);
-            selectStmt.setString(2, workName);
-            selectStmt.setInt(3, month);
+            selectStmt.setLong(2, chatId);
+            selectStmt.setString(3, workName);
+            selectStmt.setInt(4, month);
 
             ResultSet rs = selectStmt.executeQuery();
 
@@ -1013,8 +1017,9 @@ public class Logig extends TelegramLongPollingBot {
                     // Якщо день вже є в JSON, оновлюємо запис
                     updateStmt.setString(1, dayDataJson);
                     updateStmt.setLong(2, chatId);
-                    updateStmt.setString(3, workName);
-                    updateStmt.setInt(4, month);
+                    updateStmt.setLong(3, chatId);
+                    updateStmt.setString(4, workName);
+                    updateStmt.setInt(5, month);
                     updateStmt.executeUpdate();
 
                     sendMessage(chatId, "Години для обраного дня успішно оновлено.");
@@ -1181,20 +1186,20 @@ public class Logig extends TelegramLongPollingBot {
         String selectSql = """
         SELECT work_data FROM work_hours 
         WHERE chatid = ? 
-        AND work_id = (SELECT work_id FROM work_types WHERE work_name = ?) 
+        AND work_id = (SELECT work_id FROM work_types WHERE chatid = ? AND work_name = ?) 
         AND month = ?
     """;
 
         String insertSql = """
         INSERT INTO work_hours (chatid, work_id, month, work_data)
-        VALUES (?, (SELECT work_id FROM work_types WHERE work_name = ?), ?, ?::jsonb)
+        VALUES (?, (SELECT work_id FROM work_types WHERE chatid = ? AND work_name = ?), ?, ?::jsonb)
     """;
 
         String updateSql = """
         UPDATE work_hours 
         SET work_data = work_data || ?::jsonb
         WHERE chatid = ? 
-        AND work_id = (SELECT work_id FROM work_types WHERE work_name = ?) 
+        AND work_id = (SELECT work_id FROM work_types WHERE chatid = ? AND work_name = ?) 
         AND month = ?
     """;
 
@@ -1206,27 +1211,30 @@ public class Logig extends TelegramLongPollingBot {
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement selectStmt = conn.prepareStatement(selectSql);
              PreparedStatement insertStmt = conn.prepareStatement(insertSql);
-             PreparedStatement updateStmt = conn.prepareStatement(updateSql)) {
+            PreparedStatement updateStmt = conn.prepareStatement(updateSql)) {
 
             // Перевіряємо, чи існує запис для цього місяця
             selectStmt.setLong(1, chatId);
-            selectStmt.setString(2, workName);
-            selectStmt.setInt(3, currentMonth);
+            selectStmt.setLong(2, chatId);
+            selectStmt.setString(3, workName);
+            selectStmt.setInt(4, currentMonth);
 
             try (ResultSet rs = selectStmt.executeQuery()) {
                 if (rs.next()) {
                     // Якщо запис існує, оновлюємо його
                     updateStmt.setString(1, dayDataJson);
                     updateStmt.setLong(2, chatId);
-                    updateStmt.setString(3, workName);
-                    updateStmt.setInt(4, currentMonth);
+                    updateStmt.setLong(3, chatId);
+                    updateStmt.setString(4, workName);
+                    updateStmt.setInt(5, currentMonth);
                     updateStmt.executeUpdate();
                 } else {
                     // Якщо запису немає, створюємо новий запис
                     insertStmt.setLong(1, chatId);
-                    insertStmt.setString(2, workName);
-                    insertStmt.setInt(3, currentMonth);
-                    insertStmt.setString(4, dayDataJson);
+                    insertStmt.setLong(2, chatId);
+                    insertStmt.setString(3, workName);
+                    insertStmt.setInt(4, currentMonth);
+                    insertStmt.setString(5, dayDataJson);
                     insertStmt.executeUpdate();
                 }
             }
