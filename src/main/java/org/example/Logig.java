@@ -26,6 +26,7 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.Keyboard
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardRow;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboardRemove;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageReplyMarkup;
@@ -177,33 +178,31 @@ public class Logig extends TelegramLongPollingBot {
     @Override
     public void onUpdateReceived(Update update) {
         if (update.hasCallbackQuery()) {
+            long chatId = update.getCallbackQuery().getMessage().getChatId();
+            removeInlineKeyboard(chatId, update.getCallbackQuery().getMessage().getMessageId());
+
             // Обробка callback для вибору місяця
             String[] data = update.getCallbackQuery().getData().split(":");
             if (data[0].equals("select_month")) {
                 int month = Integer.parseInt(data[1]);
                 String workName = data[2];
-                long chatId = update.getCallbackQuery().getMessage().getChatId();
                 handleMonthSelection(chatId, month, workName);
             }
             else if (data[0].equals("edit_day")) {
                 int month = Integer.parseInt(data[1]);
                 int day = Integer.parseInt(data[2]);
                 String workName = data[3];
-                long chatId = update.getCallbackQuery().getMessage().getChatId();
                 handleDaySelection(chatId, month, day, workName);
             }
             else if (data[0].equals("select_date")) { // Перевіряємо перший елемент масиву
-                long chatId = update.getCallbackQuery().getMessage().getChatId(); // Отримуємо chatId з callback
                 sendCalendar(chatId); // Викликаємо метод для показу календаря
             }
 
             else if (data[0].startsWith("date_selected")) {
-                long chatId = update.getCallbackQuery().getMessage().getChatId();
-
                 int selectedDate = Integer.parseInt(data[1]); // Отримуємо число дня
                 selectedDay = selectedDate; // Зберігаємо вибраний день
 
-                sendMessage(chatId, "📆 Ви обрали " + selectedDay + " число. Введіть кількість годин:");
+                sendMessageWithKeyboard(chatId, "📆 Ви обрали " + selectedDay + " число. Введіть кількість годин:", createMainMenuBackKeyboard());
                 currentState = State.WAIT_FOR_HOURS_AFTER_DATE; // Очікуємо введення годин
             }
 
@@ -225,8 +224,9 @@ public class Logig extends TelegramLongPollingBot {
                     currentState = State.MAIN;
                 }
             }else if (messageText.equals("/settimezone")) {
-                currentState = State.SET_TIMEZONE;
+                currentState = State.WAITING_FOR_TIMEZONE;
                 sendTimezoneKeyboard(chatId);
+                return;
             }
 
 
@@ -266,6 +266,30 @@ public class Logig extends TelegramLongPollingBot {
         }
     }
 
+    private void sendMessageRemovingKeyboard(long chatId, String text) {
+        SendMessage message = new SendMessage();
+        message.setChatId(String.valueOf(chatId));
+        message.setText(text);
+        message.setReplyMarkup(new ReplyKeyboardRemove(true));
+        try {
+            execute(message);
+        } catch (TelegramApiException e) {
+            logger.error("Помилка під час очищення клавіатури: {}", e.getMessage(), e);
+        }
+    }
+
+    private void removeInlineKeyboard(long chatId, Integer messageId) {
+        EditMessageReplyMarkup editMessage = new EditMessageReplyMarkup();
+        editMessage.setChatId(String.valueOf(chatId));
+        editMessage.setMessageId(messageId);
+        editMessage.setReplyMarkup(null);
+        try {
+            execute(editMessage);
+        } catch (TelegramApiException e) {
+            logger.debug("Не вдалося прибрати inline-клавіатуру: {}", e.getMessage());
+        }
+    }
+
 
     public Boolean formatString(String input) {
 
@@ -286,7 +310,7 @@ public class Logig extends TelegramLongPollingBot {
             switch (currentState) {
 
                 case reg:
-                    sendMessage(chatId, "\uD83D\uDC4B Привіт! Давай познайомимося. Як до тебе звертатися?");
+                    sendMessageRemovingKeyboard(chatId, "\uD83D\uDC4B Привіт! Давай познайомимося. Як до тебе звертатися?");
 
                     currentState = State.SavingName;  // Переходимо до наступного стану
                     break;
@@ -320,7 +344,7 @@ public class Logig extends TelegramLongPollingBot {
 
                     } else  if (getUserJobs(chatId).size() == 0){
                         // Користувач не має жодної роботи, тому просимо ввести назву нової роботи
-                        sendMessage(chatId, "Вкажіть назву роботи:");
+                        sendMessageRemovingKeyboard(chatId, "Вкажіть назву роботи:");
 
                         // Переходимо до стану збереження роботи
                         currentState = State.SavingWork;
@@ -368,6 +392,16 @@ public class Logig extends TelegramLongPollingBot {
 
 
                 case WAIT_FOR_HOURS_AFTER_DATE:
+                    if (messageText.equals("Головне меню")) {
+                        currentState = State.MAIN;
+                        menuMain(chatId, "\"Виберіть дію:\"\n- Назва роботи – корегування\n- Додати роботу\n- Нагадування");
+                        return;
+                    }
+                    if (messageText.equals("Назад")) {
+                        currentState = State.EDIT_WORK;
+                        showSettingUpWorkMenu(chatId);
+                        return;
+                    }
 
                     if (!messageText.matches("\\d+")) {
                         sendMessage(chatId, "❌ Введіть тільки число годин (наприклад, 5).");
@@ -437,7 +471,7 @@ public class Logig extends TelegramLongPollingBot {
                         int hours = Integer.parseInt(messageText);
                         if (hours >= 0 && hours <= 23) {
                             rHours = hours;
-                            sendMessage(chatId, "Введіть хвилини для надсилання нагадування (0-59):");
+                            sendMessageWithKeyboard(chatId, "Введіть хвилини для надсилання нагадування (0-59):", createMainMenuDOWNLOADKeyboard());
                             currentState = State.reminderMinutes;
                             currentSubState = SubState.NONE;
                         } else {
@@ -550,6 +584,8 @@ public class Logig extends TelegramLongPollingBot {
 
                         case "Назад":
                             currentState = State.MAIN;
+                            menuMain(chatId, "\"Виберіть дію:\"\n- Назва роботи – корегування\n- Додати роботу\n- Нагадування");
+                            return;
                             break;
 
                         default:
@@ -589,8 +625,6 @@ public class Logig extends TelegramLongPollingBot {
                     break;
 
                 case CONFIRM_DELETEWORK:
-                    sendMessage(chatId, "DEBUG: CURRENT STATE: " + currentState + " | MESSAGE: " + messageText);
-
                     if (!update.hasMessage() || !update.getMessage().hasText()) {
                         return; // Чекаємо нового введення
                     }
@@ -605,8 +639,6 @@ public class Logig extends TelegramLongPollingBot {
                         showSettingUpWorkMenu(chatId);
                     }
                     else  {sendMessage(chatId, "❌ Невідома команда. Спробуйте ще раз.");
-                        sendMessage(chatId, "DEBUG: CURRENT STATE: " + currentState + " | MESSAGE: " + messageText);
-
                         currentState = State.EDIT_WORK;
                         showSettingUpWorkMenu(chatId);  // Повертаємо користувача до меню редагування роботи
                         return;}
@@ -714,7 +746,7 @@ public class Logig extends TelegramLongPollingBot {
 
                     // Якщо вибрано "Інший..."
                     if (selectedTimezone.equals("🏳 Інший... (ввести вручну)")) {
-                        sendMessage(chatId, "✍ Введіть назву вашого часового поясу (наприклад: `Europe/Paris`):");
+                        sendMessageRemovingKeyboard(chatId, "✍ Введіть назву вашого часового поясу у форматі `Europe/Paris`.");
                         currentState = State.WAITING_FOR_CUSTOM_TIMEZONE;
                         return;
                     }
