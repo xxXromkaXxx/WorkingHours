@@ -586,7 +586,6 @@ public class Logig extends TelegramLongPollingBot {
                             currentState = State.MAIN;
                             menuMain(chatId, "\"Виберіть дію:\"\n- Назва роботи – корегування\n- Додати роботу\n- Нагадування");
                             return;
-                            break;
 
                         default:
                             sendMessage(chatId, "Оберіть дію зі списку.");
