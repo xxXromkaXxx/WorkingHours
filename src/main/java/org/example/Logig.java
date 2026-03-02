@@ -172,6 +172,66 @@ public class Logig extends TelegramLongPollingBot {
         return input.substring(0, 1).toUpperCase() + input.substring(1).toLowerCase();
     }
 
+    private boolean isValidWorkDurationInput(String input) {
+        return input != null && input.matches("\\d{1,2}([\\.:,]\\d{1,2})?");
+    }
+
+    private String normalizeWorkDurationInput(String input) {
+        String normalized = input.trim().replace(',', ':').replace('.', ':');
+        if (!normalized.contains(":")) {
+            normalized = normalized + ":00";
+        }
+
+        String[] parts = normalized.split(":");
+        int hours = Integer.parseInt(parts[0]);
+        int minutes = Integer.parseInt(parts[1]);
+
+        if (minutes >= 60) {
+            throw new IllegalArgumentException("Minutes must be below 60");
+        }
+
+        return String.format("%d:%02d", hours, minutes);
+    }
+
+    private int parseStoredDurationToMinutes(Object rawValue) {
+        if (rawValue == null) {
+            return 0;
+        }
+
+        if (rawValue instanceof Number) {
+            return ((Number) rawValue).intValue() * 60;
+        }
+
+        String value = rawValue.toString().trim();
+        if (value.isEmpty()) {
+            return 0;
+        }
+
+        if (value.matches("\\d+")) {
+            return Integer.parseInt(value) * 60;
+        }
+
+        String normalized = value.replace('.', ':').replace(',', ':');
+        String[] parts = normalized.split(":");
+        if (parts.length != 2) {
+            throw new IllegalArgumentException("Invalid duration format: " + value);
+        }
+
+        int hours = Integer.parseInt(parts[0]);
+        int minutes = Integer.parseInt(parts[1]);
+        return hours * 60 + minutes;
+    }
+
+    private String formatMinutesAsDuration(int totalMinutes) {
+        int hours = totalMinutes / 60;
+        int minutes = totalMinutes % 60;
+        return String.format("%d:%02d", hours, minutes);
+    }
+
+    private String buildDayDataJson(int day, String normalizedDuration) {
+        return new JSONObject().put(String.valueOf(day), normalizedDuration).toString();
+    }
+
 
 
 
@@ -202,7 +262,7 @@ public class Logig extends TelegramLongPollingBot {
                 int selectedDate = Integer.parseInt(data[1]); // Отримуємо число дня
                 selectedDay = selectedDate; // Зберігаємо вибраний день
 
-                sendMessageWithKeyboard(chatId, "📆 Ви обрали " + selectedDay + " число. Введіть кількість годин:", createMainMenuBackKeyboard());
+                sendMessageWithKeyboard(chatId, "📆 Ви обрали " + selectedDay + " число. Введіть кількість годин у форматі `8.20` або `8:20`:", createMainMenuBackKeyboard());
                 currentState = State.WAIT_FOR_HOURS_AFTER_DATE; // Очікуємо введення годин
             }
 
@@ -403,13 +463,13 @@ public class Logig extends TelegramLongPollingBot {
                         return;
                     }
 
-                    if (!messageText.matches("\\d+")) {
-                        sendMessage(chatId, "❌ Введіть тільки число годин (наприклад, 5).");
+                    if (!isValidWorkDurationInput(messageText)) {
+                        sendMessage(chatId, "❌ Введіть години у форматі `8`, `8.20` або `8:20`.");
                         return;
                     }
 
-                    int hours3 = Integer.parseInt(messageText);
-                    addWorkHours2(chatId, selectedWork, selectedDay, hours3);
+                    String duration3 = normalizeWorkDurationInput(messageText);
+                    addWorkHours2(chatId, selectedWork, selectedDay, duration3);
 
                     currentState=State.MAIN;
                     menuMain(chatId, "\"Виберіть дію:\"\n- Назва роботи – корегування\n- Додати роботу\n");
@@ -555,7 +615,7 @@ public class Logig extends TelegramLongPollingBot {
                     switch (messageText) {
                         case "Додати години":
                             currentState = State.ENTER_HOURS;
-                            sendMessageWithBothKeyboards(chatId, "Введіть кількість годин:");
+                            sendMessageWithBothKeyboards(chatId, "Введіть кількість годин у форматі `8`, `8.20` або `8:20`:");
                             break;
 
                         case "Розрахувати кількість год/м":
@@ -609,17 +669,17 @@ public class Logig extends TelegramLongPollingBot {
                         currentState = State.EDIT_WORK;
                         showSettingUpWorkMenu(chatId);  // Повертаємо користувача до меню редагування роботи
                         return;
-                    }else if (!messageText.matches("\\d+")) {
-                        sendMessage(chatId, "❌ Введіть тільки число годин (наприклад, 5).");
+                    }else if (!isValidWorkDurationInput(messageText)) {
+                        sendMessage(chatId, "❌ Введіть години у форматі `8`, `8.20` або `8:20`.");
                         return;
                     }
                     try {
-                        int hours = Integer.parseInt(messageText); // Вводимо кількість годин
-                        addWorkHours(chatId, selectedWork, hours);
+                        String duration = normalizeWorkDurationInput(messageText);
+                        addWorkHours(chatId, selectedWork, duration);
                         currentState = State.MAIN;
                         handleState(update,chatId);
-                    } catch (NumberFormatException e) {
-                        sendMessage(chatId, "Введіть коректну кількість годин.");
+                    } catch (IllegalArgumentException e) {
+                        sendMessage(chatId, "Введіть коректний час у форматі `8.20` або `8:20`.");
                     }
                     break;
 
@@ -717,8 +777,12 @@ public class Logig extends TelegramLongPollingBot {
                                 return;
                             }
                             try {
-                                int hours = Integer.parseInt(messageText);
-                                editingHoursWork(chatId, selectedWork, selectedMonth, selectedDay, hours);
+                                if (!isValidWorkDurationInput(messageText)) {
+                                    sendMessageWithKeyboard(chatId, "Введіть коректний час у форматі `8.20` або `8:20`.", createMainMenuBackKeyboard());
+                                    return;
+                                }
+                                String duration = normalizeWorkDurationInput(messageText);
+                                editingHoursWork(chatId, selectedWork, selectedMonth, selectedDay, duration);
 
                                 // Повертаємось до основного меню після завершення редагування
                                 currentState = State.MAIN;
@@ -726,7 +790,7 @@ public class Logig extends TelegramLongPollingBot {
                                 selectedMonth = null;
                                 selectedDay = null;
                                 handleState(update, chatId);
-                            } catch (NumberFormatException e) {
+                            } catch (IllegalArgumentException e) {
                                 sendMessageWithKeyboard(chatId, "Введіть коректне значення для годин.", createMainMenuBackKeyboard());
                             }
                             break;
@@ -929,7 +993,7 @@ public class Logig extends TelegramLongPollingBot {
 
 
 
-    private void addWorkHours(Long chatId, String workName, int hours) {
+    private void addWorkHours(Long chatId, String workName, String duration) {
         String selectSql = """
         SELECT work_data FROM work_hours 
         WHERE chatid = ? 
@@ -956,7 +1020,7 @@ public class Logig extends TelegramLongPollingBot {
         int currentMonth = currentDate.getMonthValue();
 
         // Створюємо JSON для поточного дня
-        String dayDataJson = "{\"" + dayOfMonth + "\": " + hours + "}";
+        String dayDataJson = buildDayDataJson(dayOfMonth, duration);
 
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement selectStmt = conn.prepareStatement(selectSql);
@@ -990,7 +1054,7 @@ public class Logig extends TelegramLongPollingBot {
             }
 
             sendMessage(chatId, "Години успішно додано для роботи: " + workName +
-                    " для дня " + dayOfMonth + " місяця " + currentMonth);
+                    " для дня " + dayOfMonth + " місяця " + currentMonth + " (" + duration + ")");
 
         } catch (SQLException e) {
             logger.error("Помилка SQL: {}", e.getMessage(), e);
@@ -999,7 +1063,7 @@ public class Logig extends TelegramLongPollingBot {
     }
 
 
-    private void editingHoursWork(Long chatId, String workName, int month, int day, int hours) {
+    private void editingHoursWork(Long chatId, String workName, int month, int day, String duration) {
         String selectSql = """
         SELECT work_data FROM work_hours 
         WHERE chatid = ? 
@@ -1024,7 +1088,7 @@ public class Logig extends TelegramLongPollingBot {
 
 
         // Створюємо JSON для поточного дня
-        String dayDataJson = "{\"" + day + "\": " + hours + "}";
+        String dayDataJson = buildDayDataJson(day, duration);
 
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement selectStmt = conn.prepareStatement(selectSql);
@@ -1053,7 +1117,7 @@ public class Logig extends TelegramLongPollingBot {
                     updateStmt.setInt(5, month);
                     updateStmt.executeUpdate();
 
-                    sendMessage(chatId, "Години для обраного дня успішно оновлено.");
+                    sendMessage(chatId, "Години для обраного дня успішно оновлено: " + duration);
                 } else {
                     // Якщо дня немає в JSON, повідомляємо користувача
                     sendMessage(chatId, "Запису для обраного дня немає. Додайте спочатку години для цього дня.");
@@ -1121,21 +1185,21 @@ public class Logig extends TelegramLongPollingBot {
         selectedWork = workName; // Зберігаємо вибрану роботу для введення
 
         // Отримуємо дві найчастіше використовувані години
-        int[] commonHours = getMostUsedHours(chatId);
-        int hour1 = commonHours[0]; // Найпопулярніша година
-        int hour2 = commonHours[1]; // Додаткова опція
+        String[] commonHours = getMostUsedHours(chatId);
+        String hour1 = commonHours[0];
+        String hour2 = commonHours[1];
 
         SendMessage message = new SendMessage();
         message.setChatId(String.valueOf(chatId));
-        message.setText("⏳ Скільки годин працювали? Напишіть число або виберіть знизу. \"" + workName + "\":");
+        message.setText("⏳ Скільки годин працювали? Введіть `8`, `8.20` або `8:20`, або виберіть знизу. \"" + workName + "\":");
         message.setReplyMarkup(new ForceReplyKeyboard());
 // Створюємо клавіатуру з кнопками
         ReplyKeyboardMarkup keyboardMarkup = new ReplyKeyboardMarkup();
         keyboardMarkup.setResizeKeyboard(true);
 
         KeyboardRow row1 = new KeyboardRow();
-        row1.add(new KeyboardButton( String.valueOf(hour1)));
-        row1.add(new KeyboardButton( String.valueOf(hour2)));
+        row1.add(new KeyboardButton(hour1));
+        row1.add(new KeyboardButton(hour2));
 
         KeyboardRow row2 = new KeyboardRow();
         row2.add(new KeyboardButton("Головне меню"));
@@ -1213,7 +1277,7 @@ public class Logig extends TelegramLongPollingBot {
             logger.error("Помилка  {}", e.getMessage(), e);
         }
     }
-    private void addWorkHours2(Long chatId, String workName, int day, int hours) {
+    private void addWorkHours2(Long chatId, String workName, int day, String duration) {
         String selectSql = """
         SELECT work_data FROM work_hours 
         WHERE chatid = ? 
@@ -1237,7 +1301,7 @@ public class Logig extends TelegramLongPollingBot {
         int currentMonth = LocalDate.now().getMonthValue(); // Отримуємо поточний місяць
 
         // Створюємо JSON для вибраного дня
-        String dayDataJson = "{\"" + day + "\": " + hours + "}";
+        String dayDataJson = buildDayDataJson(day, duration);
 
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement selectStmt = conn.prepareStatement(selectSql);
@@ -1271,7 +1335,7 @@ public class Logig extends TelegramLongPollingBot {
             }
             currentState=State.MAIN ;
             sendMessage(chatId, "✅ Години успішно додано для роботи: " + workName +
-                    " на " + day + " число місяця " + currentMonth);
+                    " на " + day + " число місяця " + currentMonth + " (" + duration + ")");
 
         } catch (SQLException e) {
             logger.error("Помилка SQL: {}", e.getMessage(), e);
@@ -1484,15 +1548,16 @@ public class Logig extends TelegramLongPollingBot {
 
         try {
             JSONObject jsonObject = new JSONObject(workDataJson);
-            Map<Integer, Integer> sortedWorkData = new TreeMap<>();
+            Map<Integer, String> sortedWorkData = new TreeMap<>();
 
             // Додаємо всі дні та їхні години у TreeMap (він сортує їх автоматично)
             for (String key : jsonObject.keySet()) {
-                sortedWorkData.put(Integer.parseInt(key), jsonObject.getInt(key));
+                Object rawValue = jsonObject.get(key);
+                sortedWorkData.put(Integer.parseInt(key), formatMinutesAsDuration(parseStoredDurationToMinutes(rawValue)));
             }
 
             // Формуємо результат у правильному порядку
-            for (Map.Entry<Integer, Integer> entry : sortedWorkData.entrySet()) {
+            for (Map.Entry<Integer, String> entry : sortedWorkData.entrySet()) {
                 hoursData.add("📅 День: " + entry.getKey() + " | ⏳ Години: " + entry.getValue());
             }
         } catch (Exception e) {
@@ -1630,11 +1695,11 @@ public class Logig extends TelegramLongPollingBot {
     // Обробка вибраного місяця
     private void handleMonthSelection(long chatId, int month, String workName) {
         List<String> hoursData = getWorkHoursDataForMonth(chatId, workName, month);
-        int totalHours = calculateTotalHours(hoursData);
+        int totalMinutes = calculateTotalMinutes(hoursData);
 
         StringBuilder message = new StringBuilder();
         message.append("📅 *Місяць:* ").append(getMonthName(month)).append("\n");
-        message.append("⏳ *Загальна кількість годин:* ").append(totalHours).append("\n\n");
+        message.append("⏳ *Загальна кількість годин:* ").append(formatMinutesAsDuration(totalMinutes)).append("\n\n");
 
         for (String dayData : hoursData) {
             message.append(dayData).append("\n");
@@ -1664,8 +1729,8 @@ public class Logig extends TelegramLongPollingBot {
                 String workDataJson = rs.getString("work_data");
                 JSONObject jsonObject = new JSONObject(workDataJson);
                 for (String day : jsonObject.keySet()) {
-                    int hours = jsonObject.getInt(day);
-                    hoursData.add("📅 День: " + day + " | ⏳ Години: " + hours);
+                    Object rawValue = jsonObject.get(day);
+                    hoursData.add("📅 День: " + day + " | ⏳ Години: " + formatMinutesAsDuration(parseStoredDurationToMinutes(rawValue)));
                 }
             }
         } catch (SQLException e) {
@@ -1676,9 +1741,10 @@ public class Logig extends TelegramLongPollingBot {
     }
 
     // Підрахунок загальної кількості годин
-    private int calculateTotalHours(List<String> hoursData) {
+    private int calculateTotalMinutes(List<String> hoursData) {
         return hoursData.stream()
-                .mapToInt(data -> Integer.parseInt(data.replaceAll(".*Години: (\\d+)", "$1")))
+                .map(data -> data.replaceAll(".*Години: ", "").trim())
+                .mapToInt(this::parseStoredDurationToMinutes)
                 .sum();
     }
 
@@ -1712,13 +1778,11 @@ public class Logig extends TelegramLongPollingBot {
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
 
         for (String dayData : daysWithHours) {
-            String[] parts = dayData.split(":");
-            String dayDO = parts[0].replaceAll("\\D+", ""); // Видаляємо все, окрім чисел
-            String hours = parts.length > 1 ? parts[1] : "0";
-            // Перевіряємо, чи в числі більше або дорівнює 100
-            String day= splitTime(dayDO);
+            String[] parts = dayData.split("\\|", 2);
+            String day = parts[0].replaceAll("\\D+", "");
+            String hours = parts.length > 1 ? parts[1].replace("⏳ Години:", "").trim() : "0:00";
             InlineKeyboardButton button = new InlineKeyboardButton();
-            button.setText("День " + day + " (" +hours + " год)");
+            button.setText("День " + day + " (" + hours + ")");
 
             button.setCallbackData("edit_day:" + month + ":" + day + ":" + workName); // Передаємо тільки число дня
 
@@ -1741,8 +1805,8 @@ public class Logig extends TelegramLongPollingBot {
     // Обробка вибору дня
     private void handleDaySelection(long chatId, int month, int day, String workName) {
 
-        int existingHours = getHoursForDay(chatId, workName, month, day);
-        sendMessage(chatId, "На день " + day + " вже внесено " + existingHours + " годин. Введіть нове значення або натисніть 'Скасувати'.");
+        String existingHours = getHoursForDay(chatId, workName, month, day);
+        sendMessage(chatId, "На день " + day + " вже внесено " + existingHours + ". Введіть нове значення або натисніть 'Скасувати'.");
         currentState = State.editingHours;
         currentSubState=SubState.WAIT_FOR_HOURS;
         selectedMonth = month;
@@ -1750,7 +1814,7 @@ public class Logig extends TelegramLongPollingBot {
         selectedWork = workName;
     }
 
-    private int getHoursForDay(long chatId, String workName, int month, int day) {
+    private String getHoursForDay(long chatId, String workName, int month, int day) {
         String sql = "SELECT work_data FROM work_hours JOIN work_types ON work_hours.work_id = work_types.work_id WHERE work_hours.chatid = ? AND work_types.work_name = ? AND work_hours.month = ?";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
@@ -1760,13 +1824,15 @@ public class Logig extends TelegramLongPollingBot {
             ResultSet rs = pstmt.executeQuery();
             if (rs.next()) {
                 JSONObject jsonObject = new JSONObject(rs.getString("work_data"));
-                return jsonObject.optInt(String.valueOf(day), 0);
+                if (jsonObject.has(String.valueOf(day))) {
+                    return formatMinutesAsDuration(parseStoredDurationToMinutes(jsonObject.get(String.valueOf(day))));
+                }
             }
         } catch (SQLException e) {
             logger.error("Помилка SQL: {}", e.getMessage(), e);
         }
 
-        return 0;
+        return "0:00";
     }
 
 
@@ -1797,13 +1863,10 @@ public class Logig extends TelegramLongPollingBot {
 
                     // Перетворюємо ключ у число (день)
                     int day = Integer.parseInt(key);
-                    // Отримуємо значення (кількість годин)
-                    int hours = jsonObject.getInt(key);
+                    String hours = formatMinutesAsDuration(parseStoredDurationToMinutes(jsonObject.get(key)));
 
                     // Додаємо коректний вивід
-                    hoursData.add(" " + day + " " + hours);
-
-                    System.out.println(" " + day + " " + hours);
+                    hoursData.add("День: " + day + " | ⏳ Години: " + hours);
 
                 }
             }
@@ -1998,21 +2061,22 @@ public class Logig extends TelegramLongPollingBot {
 
 
 
-    private int[] getMostUsedHours(Long chatId) {
+    private String[] getMostUsedHours(Long chatId) {
         String sql = """
-        SELECT jsonb_each_text(work_data) ->> 'value' AS hours
+        SELECT entry.value AS hours
         FROM work_hours
+        CROSS JOIN LATERAL jsonb_each_text(work_data) AS entry(day, value)
         WHERE chatid = ?
     """;
 
-        Map<Integer, Integer> hourFrequency = new HashMap<>();
+        Map<String, Integer> hourFrequency = new HashMap<>();
 
         try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setLong(1, chatId);
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
-                    int hours = Integer.parseInt(rs.getString("hours"));
+                    String hours = formatMinutesAsDuration(parseStoredDurationToMinutes(rs.getString("hours")));
                     hourFrequency.put(hours, hourFrequency.getOrDefault(hours, 0) + 1);
                 }
             }
@@ -2021,14 +2085,14 @@ public class Logig extends TelegramLongPollingBot {
         }
 
         // Сортуємо години за частотою використання (спаданням)
-        List<Map.Entry<Integer, Integer>> sortedHours = new ArrayList<>(hourFrequency.entrySet());
+        List<Map.Entry<String, Integer>> sortedHours = new ArrayList<>(hourFrequency.entrySet());
         sortedHours.sort((a, b) -> b.getValue().compareTo(a.getValue()));
 
         // Визначаємо дві найпопулярніші години або дефолтні
-        int hour1 = sortedHours.size() > 0 ? sortedHours.get(0).getKey() : 8;
-        int hour2 = sortedHours.size() > 1 ? sortedHours.get(1).getKey() : 12;
+        String hour1 = sortedHours.size() > 0 ? sortedHours.get(0).getKey() : "8:00";
+        String hour2 = sortedHours.size() > 1 ? sortedHours.get(1).getKey() : "12:00";
 
-        return new int[]{hour1, hour2};
+        return new String[]{hour1, hour2};
     }
 
 
